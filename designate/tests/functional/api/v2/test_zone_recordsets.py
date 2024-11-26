@@ -20,9 +20,13 @@ import oslo_messaging as messaging
 from oslo_utils import timeutils
 
 from designate.central import service as central_service
+import designate.conf
 from designate import exceptions
 from designate import objects
 from designate.tests.functional.api import v2
+
+
+CONF = designate.conf.CONF
 
 LOG = logging.getLogger(__name__)
 
@@ -211,6 +215,47 @@ class ApiV2RecordSetsTest(v2.ApiV2TestCase):
         self._assert_exception(
             'invalid_object', 400, self.client.post_json, url, body,
             headers={'X-Test-Role': 'member'})
+
+    def test_create_recordset_with_invalid_type_with_generic_types(self):
+        CONF.set_override(
+            'support_generic_record_types',
+            True
+        )
+        fixture = self.get_recordset_fixture(self.zone['name'], fixture=0)
+        fixture['type'] = "ABC"
+        body = fixture
+        url = '/zones/%s/recordsets' % self.zone['id']
+        self._assert_exception(
+            'invalid_object', 400, self.client.post_json, url, body,
+            headers={'X-Test-Role': 'member'})
+
+    def test_create_recordset_with_valid_type_with_generic_types(self):
+        CONF.set_override(
+            'support_generic_record_types',
+            True
+        )
+        fixture = self.get_recordset_fixture(self.zone['name'], fixture=0)
+        fixture['type'] = 'TYPE1234'
+        body = fixture
+        url = '/zones/%s/recordsets' % self.zone['id']
+        response = self.client.post_json(
+            url, body, headers={'X-Test-Role': 'member'})
+        self.assertEqual(201, response.status_int)
+        self.assertEqual(response.json['type'], 'TYPE1234')
+
+    def test_create_recordset_with_supported_type_with_generic_types(self):
+        CONF.set_override(
+            'support_generic_record_types',
+            True
+        )
+        fixture = self.get_recordset_fixture(self.zone['name'], fixture=0)
+        fixture['type'] = 'TYPE1'
+        body = fixture
+        url = '/zones/%s/recordsets' % self.zone['id']
+        response = self.client.post_json(
+            url, body, headers={'X-Test-Role': 'member'})
+        self.assertEqual(201, response.status_int)
+        self.assertEqual(response.json['type'], 'TYPE1')
 
     def test_create_recordset_description_too_long(self):
         fixture = self.get_recordset_fixture(self.zone['name'], fixture=0)

@@ -56,6 +56,9 @@ DESIGNATE_OPTS = [
                 default=['A', 'AAAA', 'CNAME', 'MX', 'SRV', 'TXT', 'SPF', 'NS',
                          'PTR', 'SSHFP', 'SOA', 'NAPTR', 'CAA', 'CERT']),
 
+    cfg.BoolOpt('support_generic_record_types', default=False,
+                help='Enable supports of generic record types (see RFC3597).'),
+
     # TCP Settings
     cfg.IntOpt('backlog',
                default=4096,

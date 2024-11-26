@@ -20,7 +20,6 @@ from oslo_config import fixture as cfg_fixture
 from oslo_log import log as logging
 import oslotest.base
 
-
 import designate.conf
 from designate import exceptions
 from designate import objects
@@ -360,3 +359,44 @@ class RecordSetTest(oslotest.base.BaseTestCase):
             set(new_ips),
             get_data(record_set.obj_get_changes()['records'])
         )
+
+    def test_record_cls_from_rdtype(self):
+        cls = objects.RecordSet.record_cls_from_rdtype('IN', 'A')
+        self.assertEqual(objects.A, cls)
+
+        cls = objects.RecordSet.record_cls_from_rdtype('ANY', 'MX')
+        self.assertEqual(objects.MX, cls)
+
+        cls = objects.RecordSet.record_cls_from_rdtype('ANY', 'SOA')
+        self.assertEqual(objects.SOA, cls)
+
+        with self.assertRaisesRegex(
+            ValueError,
+                "recordset of class 'IN' and type 'FOO' is unknown."
+                " Try to use 'CLASSN' or 'TYPEN' to force"
+                " generic datatype. see RFC3597"):
+            objects.RecordSet.record_cls_from_rdtype('IN', 'FOO')
+
+        with self.assertRaisesRegex(
+                ValueError,
+                "recordset of class 'CLASS1' and "
+                "type 'TYPE1' is not supported"):
+            objects.RecordSet.record_cls_from_rdtype('CLASS1', 'TYPE1')
+
+        with self.assertRaisesRegex(
+                ValueError,
+                "recordset of class 'CLASS1' and "
+                "type 'TYPE1234' is not supported"):
+            objects.RecordSet.record_cls_from_rdtype('CLASS1', 'TYPE1234')
+
+        cls = objects.RecordSet.record_cls_from_rdtype(
+            'CLASS1', 'TYPE1',
+            support_generic_record_types=True,
+        )
+        self.assertEqual(objects.Generic, cls)
+
+        cls = objects.RecordSet.record_cls_from_rdtype(
+            'CLASS1', 'TYPE1234',
+            support_generic_record_types=True
+        )
+        self.assertEqual(objects.Generic, cls)

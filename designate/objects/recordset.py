@@ -14,6 +14,9 @@
 #    under the License.
 
 from copy import deepcopy
+from dns import rdata
+from dns import rdataclass
+from dns import rdatatype
 
 from oslo_log import log
 from oslo_versionedobjects import exception as ovo_exc
@@ -22,6 +25,7 @@ import designate.conf
 from designate import exceptions
 from designate.objects import base
 from designate.objects import fields
+from designate.objects.rrdata_generic import Generic
 from designate.objects.validation_error import ValidationError
 from designate.objects.validation_error import ValidationErrorList
 from designate import utils
@@ -117,17 +121,19 @@ class RecordSet(base.DesignateObject, base.DictObjectMixin,
 
         # Get the right classes (e.g. A for Recordsets with type: 'A')
         try:
-            record_list_cls = self.obj_cls_from_name('%sList' % self.type)
-            record_cls = self.obj_cls_from_name(self.type)
+            # IN is the only class currently supported in designate
+            record_cls = self.record_cls_from_rdtype(
+                'IN', self.type, CONF.support_generic_record_types)
+            record_list_cls = self.obj_cls_from_name(
+                '%sList' % record_cls.__name__)
         except (KeyError, ovo_exc.UnsupportedObjectError):
             err_msg = ("'%(type)s' is not a valid record type"
                        % {'type': self.type})
             self._validate_fail(errors, err_msg)
-
-        if self.type not in CONF.supported_record_type:
-            err_msg = ("'%(type)s' is not a supported record type"
-                       % {'type': self.type})
-            self._validate_fail(errors, err_msg)
+        except ValueError as e:
+            self._validate_fail(errors, str(e))
+        except AssertionError as e:
+            self._validate_fail(errors, str(e))
 
         # Get any rules that the record type imposes on the record
         changes = record_cls.get_recordset_schema_changes()
@@ -150,7 +156,11 @@ class RecordSet(base.DesignateObject, base.DictObjectMixin,
         for record in old_records:
             record_obj = record_cls()
             try:
-                record_obj.from_string(record.data)
+                if record_cls == Generic:
+                    # IN is the only class currently supported in designate
+                    rdata.from_text('IN', self.type, record.data)
+                else:
+                    record_obj.from_string(record.data)
             # The from_string() method will throw a ValueError if there is not
             # enough data blobs
             except ValueError as e:
@@ -231,6 +241,39 @@ class RecordSet(base.DesignateObject, base.DictObjectMixin,
     STRING_KEYS = [
         'id', 'type', 'name', 'zone_id', 'shard'
     ]
+
+    @classmethod
+    def record_cls_from_rdtype(
+            self, rdclass, rdtype, support_generic_record_types=False):
+
+        if rdclass is None or rdtype is None:
+            raise AssertionError("'rdclass' and 'rdtype' must not be None")
+
+        # Compute class and type numbers from names
+        try:
+            rdclassnumber = rdataclass.RdataClass.make(rdclass)
+            rdtypenumber = rdatatype.RdataType.make(rdtype)
+        except rdatatype.UnknownRdatatype:
+            err_msg = ("recordset of class '%(class)s' and type '%(type)s'"
+                       " is unknown. Try to use 'CLASSN' or 'TYPEN' to force"
+                       " generic datatype. see RFC3597"
+                       % {'type': rdtype, 'class': rdclass})
+            raise ValueError(err_msg)
+
+        # Try to match a rdata class from numbers...
+        cls = rdata.get_rdata_class(rdclassnumber, rdtypenumber)
+
+        # ... and match against supported record types
+        if (cls.__name__ in CONF.supported_record_type and
+                not rdtype.startswith('TYPE')):
+            return self.obj_class_from_name(cls.__name__, '1.0')
+        elif support_generic_record_types:
+            return self.obj_class_from_name('Generic', '1.0')
+        else:
+            err_msg = ("recordset of class '%(class)s' and type '%(type)s'"
+                       " is not supported"
+                       % {'type': rdtype, 'class': rdclass})
+            raise ValueError(err_msg)
 
 
 @base.DesignateRegistry.register

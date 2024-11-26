@@ -22,6 +22,7 @@ from oslo_utils import timeutils
 from oslo_utils import uuidutils
 
 import designate.conf
+from designate.storage.sqlalchemy.types import DNSRecordTypes
 from designate.storage.sqlalchemy.types import UUID
 
 
@@ -214,7 +215,7 @@ recordsets = Table('recordsets', metadata,
     Column('tenant_id', String(36), default=None, nullable=True),
     Column('zone_id', UUID, nullable=False),
     Column('name', String(255), nullable=False),
-    Column('type', Enum(name='record_types', *RECORD_TYPES), nullable=False),
+    Column('type', DNSRecordTypes, nullable=False),
     Column('ttl', Integer, default=None, nullable=True),
     Column('description', Unicode(160), nullable=True),
     Column('reverse_name', String(255), nullable=False, default=''),
